@@ -1,217 +1,266 @@
 import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
-    let disposable = vscode.commands.registerCommand('jcl-joblib-manager.updateJoblib', async (...args: any[]) => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            vscode.window.showErrorMessage('No active editor found.');
-            return;
-        }
+    // 1. JOBLIB Update Command
+    let updateJoblib = vscode.commands.registerCommand('jcl-library-manager.updateJoblib', async (...args: any[]) => {
+        await updateLibrary('JOB', args);
+    });
 
-        const document = editor.document;
-        const config = vscode.workspace.getConfiguration('jclJoblibManager');
-        
-        // Check for supported extensions
-        const supportedExtensions: string[] = config.get('supportedExtensions') || [];
-        const fileExtension = document.fileName.substring(document.fileName.lastIndexOf('.')).toLowerCase();
-        
-        if (supportedExtensions.length > 0 && !supportedExtensions.map(ext => ext.toLowerCase()).includes(fileExtension)) {
-            // If the user right-clicked a non-supported file, we just exit silently or show a message
-            return; 
-        }
+    // 2. PROCLIB Update Command
+    let updateProclib = vscode.commands.registerCommand('jcl-library-manager.updateProclib', async (...args: any[]) => {
+        await updateLibrary('PROC', args);
+    });
 
-        const rawMappings: Record<string, string> = config.get('mappings') || {};
-        
-        // Normalize mappings to uppercase keys
-        const mappings: Record<string, string> = {};
-        for (const key of Object.keys(rawMappings)) {
-            mappings[key.toUpperCase()] = rawMappings[key];
-        }
+    // 3. Bulk Import Command
+    let importMappings = vscode.commands.registerCommand('jcl-library-manager.importMappings', async () => {
+        await bulkImport();
+    });
 
-        // If no args provided, prompt for them
-        if (args.length === 0 || (args.length === 1 && typeof args[0] === 'object')) {
-            const availableKeys = Object.keys(mappings).join(', ');
-            const input = await vscode.window.showInputBox({
-                prompt: `Enter JOBLIB shorthands (space-separated). Available: ${availableKeys}`,
-                placeHolder: "e.g. dev test"
-            });
-            if (!input) {
-                return;
-            }
-            args = input.trim().split(/\s+/);
-        }
+    context.subscriptions.push(updateJoblib, updateProclib, importMappings);
+}
 
-        // Convert shorthand args to full DSN strings (case-insensitive)
-        const joblibs: string[] = [];
-        const missingShorthands: string[] = [];
+async function updateLibrary(type: 'JOB' | 'PROC', args: any[]) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showErrorMessage('No active editor found.');
+        return;
+    }
 
-        args.forEach(arg => {
-            const upperArg = String(arg).toUpperCase();
-            const library = mappings[upperArg];
-            
-            if (library) {
-                joblibs.push(`DSN=${library.toUpperCase()},DISP=SHR`);
-            } else {
-                // If not in mapping, check if it's already a DSN statement
-                if (upperArg.includes('=')) {
-                    joblibs.push(upperArg);
-                } else {
-                    joblibs.push(`DSN=${upperArg},DISP=SHR`);
-                    missingShorthands.push(upperArg);
-                }
-            }
+    const document = editor.document;
+    const config = vscode.workspace.getConfiguration('jclLibraryManager');
+    
+    // Check for supported extensions
+    const supportedExtensions: string[] = config.get('supportedExtensions') || [];
+    const fileName = document.fileName.toLowerCase();
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+    
+    if (supportedExtensions.length > 0 && !supportedExtensions.map(ext => ext.toLowerCase()).includes(fileExtension)) {
+        return; 
+    }
+
+    const mappingKey = type === 'JOB' ? 'joblibMappings' : 'proclibMappings';
+    const rawMappings: Record<string, string> = config.get(mappingKey) || {};
+    const mappings: Record<string, string> = {};
+    for (const key of Object.keys(rawMappings)) {
+        mappings[key.toUpperCase()] = rawMappings[key];
+    }
+
+    // Get input if no args
+    if (args.length === 0 || (args.length === 1 && typeof args[0] === 'object')) {
+        const availableKeys = Object.keys(mappings).join(', ');
+        const input = await vscode.window.showInputBox({
+            prompt: `Enter ${type}LIB shorthands (space-separated). Available: ${availableKeys}`,
+            placeHolder: "e.g. dev test"
         });
+        if (!input) return;
+        args = input.trim().split(/\s+/);
+    }
 
-        if (missingShorthands.length > 0) {
-            vscode.window.showWarningMessage(`Shorthands not found in settings: ${missingShorthands.join(', ')}. Using them as literal text.`);
+    const libraryNames: string[] = [];
+    const missing: string[] = [];
+
+    args.forEach(arg => {
+        const upperArg = String(arg).toUpperCase();
+        const lib = mappings[upperArg];
+        if (lib) {
+            libraryNames.push(lib.toUpperCase());
+        } else {
+            libraryNames.push(upperArg);
+            if (!upperArg.includes('=') && !upperArg.includes('.')) {
+                missing.push(upperArg);
+            }
         }
-        if (joblibs.length === 0) {
-            vscode.window.showWarningMessage('No JOBLIB shorthand names provided.');
-            return;
+    });
+
+    if (missing.length > 0) {
+        vscode.window.showWarningMessage(`Shorthands not found in ${type}LIB settings: ${missing.join(', ')}.`);
+    }
+
+    const text = document.getText();
+    const lines = text.split(/\r?\n/);
+    
+    // 1. Find boundaries: JOB card and first EXEC
+    let jobCardIndex = -1;
+    let firstExecIndex = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+        if (jobCardIndex === -1 && lines[i].startsWith('//') && lines[i].includes(' JOB ')) {
+            jobCardIndex = i;
         }
+        if (jobCardIndex !== -1 && lines[i].startsWith('//') && !lines[i].startsWith('//*') && lines[i].includes(' EXEC ')) {
+            firstExecIndex = i;
+            break;
+        }
+    }
 
-        const text = document.getText();
-        const lines = text.split(/\r?\n/);
-        
-        let jobCardLineIndex = -1;
-        let joblibStartLine = -1;
-        let joblibEndLine = -1;
+    if (jobCardIndex === -1) {
+        vscode.window.showErrorMessage('Could not find a JOB card.');
+        return;
+    }
 
-        // 1. Find the JOB card
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].startsWith('//') && lines[i].includes(' JOB ')) {
-                jobCardLineIndex = i;
-                break;
+    // 2. Identify all line ranges to be removed for the target type
+    const rangesToRemove: {start: number, end: number}[] = [];
+    const commentsToPreserve: string[] = [];
+    let currentRange: {start: number, end: number} | null = null;
+    let inBlock = false;
+    let openParens = 0;
+
+    for (let i = jobCardIndex + 1; i < firstExecIndex; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        const isComment = line.startsWith('//*');
+        const isJcl = line.startsWith('//') && !isComment;
+
+        // Check if a new block of OUR type starts here
+        let isOurMaster = false;
+        if (isJcl) {
+            if (type === 'JOB' && trimmed.startsWith('//JOBLIB')) isOurMaster = true;
+            if (type === 'PROC') {
+                if (trimmed.startsWith('//PROCLIB') || (trimmed.includes('JCLLIB') && trimmed.includes('ORDER'))) isOurMaster = true;
             }
         }
 
-        if (jobCardLineIndex === -1) {
-            vscode.window.showErrorMessage('Could not find a JOB card in the current file.');
-            return;
+        // Special check for JOBLIB orphan (only if it's the very first active JCL after JOB)
+        if (type === 'JOB' && !isOurMaster && isJcl && line.match(/^\/\/\s+DD\s/)) {
+            let prevActive = false;
+            for (let k = jobCardIndex + 1; k < i; k++) if (lines[k].startsWith('//') && !lines[k].startsWith('//*')) prevActive = true;
+            if (!prevActive) isOurMaster = true;
         }
 
-        // 2. Look for existing ACTIVE JOBLIB statements or orphaned DDs after the JOB card
-        for (let i = jobCardLineIndex + 1; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            // We look for active //JOBLIB or active unnamed // DD (orphans/continuations)
-            const isJoblib = trimmed.startsWith('//JOBLIB');
-            const isContinuation = line.match(/^\/\/\s+DD\s/);
-
-            if (isJoblib || isContinuation) {
-                if (joblibStartLine === -1) {
-                    joblibStartLine = i;
-                }
-                joblibEndLine = i;
-            } else if (trimmed.startsWith('//') && (trimmed.includes(' EXEC ') || (trimmed.includes(' DD ') && !trimmed.includes('JOBLIB')))) {
-                // Stop if we hit another named DD or EXEC
-                break;
-            }
-        }
-
-        // 3. Prepare the new JOBLIB statements
-        const finalLines: string[] = [];
-        joblibs.forEach((dsn, index) => {
-            if (index === 0) {
-                finalLines.push(`//JOBLIB   DD ${dsn}`);
+        if (isOurMaster) {
+            if (currentRange) rangesToRemove.push(currentRange);
+            currentRange = { start: i, end: i };
+            inBlock = true;
+            // Handle parens for JCLLIB
+            if (type === 'PROC' && trimmed.includes('ORDER')) {
+                openParens = (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
             } else {
-                finalLines.push(`//         DD ${dsn}`);
+                openParens = 0;
             }
-        });
+            continue;
+        }
 
-        // 4. Perform the edit
-        editor.edit(editBuilder => {
-            if (joblibStartLine !== -1) {
-                // Collect ALL comments (including zombie JCL) within the identified range to preserve them
-                const commentsToPreserve: string[] = [];
-                for (let i = joblibStartLine; i <= joblibEndLine; i++) {
-                    if (lines[i].startsWith('//*')) {
-                        commentsToPreserve.push(lines[i]);
+        // If we are currently inside a range of our type, decide if we continue
+        if (inBlock && currentRange) {
+            let shouldContinue = false;
+            if (isComment) {
+                shouldContinue = true;
+                commentsToPreserve.push(line);
+            } else if (isJcl) {
+                // Continuation DD or multi-line JCLLIB (parens still open)
+                if (line.match(/^\/\/\s+DD\s/) || (type === 'PROC' && openParens > 0)) {
+                    shouldContinue = true;
+                    if (type === 'PROC') {
+                        openParens += (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
                     }
                 }
+            }
 
-                const range = new vscode.Range(
-                    new vscode.Position(joblibStartLine, 0),
-                    new vscode.Position(joblibEndLine + 1, 0)
-                );
-                
-                // The replacement is the new JOBLIBs followed by all original comments
-                const replacementText = [...finalLines, ...commentsToPreserve].join('\n') + '\n';
-                editBuilder.replace(range, replacementText);
+            if (shouldContinue) {
+                currentRange.end = i;
             } else {
-                // Insert after JOB card (and potentially after immediately following comments/JES cards)
-                let insertIndex = jobCardLineIndex + 1;
-                // Move past comments and JES cards immediately following JOB card
-                while (insertIndex < lines.length && (lines[insertIndex].startsWith('//*') || lines[insertIndex].startsWith('/*'))) {
-                    insertIndex++;
-                }
-                
-                const position = new vscode.Position(insertIndex, 0);
-                editBuilder.insert(position, finalLines.join('\n') + '\n');
+                rangesToRemove.push(currentRange);
+                currentRange = null;
+                inBlock = false;
             }
-        });
-    });
-
-    context.subscriptions.push(disposable);
-
-    // New command: Bulk Import Mappings
-    let importDisposable = vscode.commands.registerCommand('jcl-joblib-manager.importMappings', async () => {
-        const options: vscode.OpenDialogOptions = {
-            canSelectMany: false,
-            openLabel: 'Import Mappings',
-            filters: {
-                'Text/CSV files': ['txt', 'csv', 'log']
-            }
-        };
-
-        const fileUri = await vscode.window.showOpenDialog(options);
-        if (!fileUri || fileUri.length === 0) return;
-
-        const importPath = fileUri[0].fsPath;
-        const content = await vscode.workspace.fs.readFile(fileUri[0]);
-        const text = new TextDecoder().decode(content);
-        const lines = text.split(/\r?\n/);
-
-        const newMappings: Record<string, string> = {};
-        lines.forEach((line: string) => {
-            // Support comma, equals, or colon as separators
-            const parts = line.split(/[=,:]/);
-            if (parts.length >= 2) {
-                const key = parts[0].trim().toUpperCase();
-                const value = parts[1].trim().toUpperCase();
-                if (key && value) {
-                    newMappings[key] = value;
-                }
-            }
-        });
-
-        if (Object.keys(newMappings).length === 0) {
-            vscode.window.showErrorMessage('No valid mappings found in the selected file. Expected format: KEY=VALUE or KEY,VALUE');
-            return;
         }
+    }
+    if (currentRange) rangesToRemove.push(currentRange);
 
-        const mode = await vscode.window.showQuickPick(['Merge (Add to existing)', 'Overwrite (Replace existing)'], {
-            placeHolder: 'Do you want to merge these with your current mappings or replace them entirely?'
+    // 3. Prepare the new library block
+    const finalNewLines: string[] = [];
+    if (type === 'JOB') {
+        const ddName = 'JOBLIB';
+        libraryNames.forEach((name, idx) => {
+            const prefix = idx === 0 ? `//${ddName.padEnd(8)}` : '//        ';
+            finalNewLines.push(`${prefix} DD DSN=${name},DISP=SHR`);
         });
-
-        if (!mode) return;
-
-        const config = vscode.workspace.getConfiguration('jclJoblibManager');
-        const currentMappings: Record<string, string> = config.get('mappings') || {};
-        
-        let finalMappings: Record<string, string>;
-        if (mode.startsWith('Merge')) {
-            finalMappings = { ...currentMappings, ...newMappings };
+    } else {
+        if (libraryNames.length === 1) {
+            finalNewLines.push(`// JCLLIB ORDER=(${libraryNames[0]})`);
         } else {
-            finalMappings = newMappings;
+            finalNewLines.push(`// JCLLIB ORDER=(${libraryNames[0]},`);
+            for (let i = 1; i < libraryNames.length; i++) {
+                const suffix = i === libraryNames.length - 1 ? ')' : ',';
+                finalNewLines.push(`//               ${libraryNames[i]}${suffix}`);
+            }
         }
+    }
+    const replacementText = [...finalNewLines, ...commentsToPreserve].join('\n') + '\n';
 
-        await config.update('mappings', finalMappings, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`Successfully imported ${Object.keys(newMappings).length} mappings.`);
+    // 4. Perform the edit
+    await editor.edit(editBuilder => {
+        if (rangesToRemove.length > 0) {
+            // Delete all identified ranges
+            rangesToRemove.forEach(r => {
+                const range = new vscode.Range(new vscode.Position(r.start, 0), new vscode.Position(r.end + 1, 0));
+                editBuilder.delete(range);
+            });
+            // Insert the new block at the start of the first removed range
+            editBuilder.insert(new vscode.Position(rangesToRemove[0].start, 0), replacementText);
+        } else {
+            // Default insertion: after JOB card and immediate comments
+            let insertIdx = jobCardIndex + 1;
+            while (insertIdx < lines.length && (lines[insertIdx].startsWith('//*') || lines[insertIdx].startsWith('/*'))) {
+                insertIdx++;
+            }
+            editBuilder.insert(new vscode.Position(insertIdx, 0), replacementText);
+        }
+    });
+}
+
+async function bulkImport() {
+    const options: vscode.OpenDialogOptions = {
+        canSelectMany: false,
+        openLabel: 'Import Mappings',
+        filters: { 'Text/CSV': ['txt', 'csv'] }
+    };
+
+    const fileUri = await vscode.window.showOpenDialog(options);
+    if (!fileUri || fileUri.length === 0) return;
+
+    const content = await vscode.workspace.fs.readFile(fileUri[0]);
+    const text = new TextDecoder().decode(content);
+    const lines = text.split(/\r?\n/);
+
+    const jobMappings: Record<string, string> = {};
+    const procMappings: Record<string, string> = {};
+
+    lines.forEach(line => {
+        const parts = line.split(/[=,:]/);
+        if (parts.length === 2) {
+            // Default to JOB if type missing
+            jobMappings[parts[0].trim().toUpperCase()] = parts[1].trim().toUpperCase();
+        } else if (parts.length >= 3) {
+            const key = parts[0].trim().toUpperCase();
+            const type = parts[1].trim().toUpperCase();
+            const val = parts[2].trim().toUpperCase();
+            if (type.includes('PROC')) {
+                procMappings[key] = val;
+            } else {
+                jobMappings[key] = val;
+            }
+        }
     });
 
-    context.subscriptions.push(importDisposable);
+    const mode = await vscode.window.showQuickPick(['Merge', 'Overwrite'], {
+        placeHolder: 'Merge with or Overwrite current mappings?'
+    });
+    if (!mode) return;
+
+    const config = vscode.workspace.getConfiguration('jclLibraryManager');
+    const target = vscode.ConfigurationTarget.Global;
+
+    if (mode === 'Merge') {
+        const curJob = config.get<Record<string, string>>('joblibMappings') || {};
+        const curProc = config.get<Record<string, string>>('proclibMappings') || {};
+        await config.update('joblibMappings', { ...curJob, ...jobMappings }, target);
+        await config.update('proclibMappings', { ...curProc, ...procMappings }, target);
+    } else {
+        await config.update('joblibMappings', jobMappings, target);
+        await config.update('proclibMappings', procMappings, target);
+    }
+
+    vscode.window.showInformationMessage(`Imported ${Object.keys(jobMappings).length} JOBLIB and ${Object.keys(procMappings).length} PROCLIB mappings.`);
 }
 
 export function deactivate() {}

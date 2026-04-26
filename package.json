@@ -1,9 +1,9 @@
 {
-    "name": "jcl-joblib-manager",
-    "displayName": "JCL JOBLIB Manager",
-    "description": "Quickly update JCL JOBLIB statements using shorthand names.",
-    "version": "1.1.0",
-    "publisher": "usmc-tso",
+    "name": "jcl-library-manager",
+    "displayName": "JCL Library Manager",
+    "description": "Quickly update JCL JOBLIB and PROCLIB statements using shorthand names.",
+    "version": "1.2.0",
+    "publisher": "your-name-or-company",
     "engines": {
         "vscode": "^1.75.0"
     },
@@ -15,45 +15,62 @@
     "contributes": {
         "commands": [
             {
-                "command": "jcl-joblib-manager.updateJoblib",
+                "command": "jcl-library-manager.updateJoblib",
                 "title": "JCL: Update JOBLIB"
             },
             {
-                "command": "jcl-joblib-manager.importMappings",
+                "command": "jcl-library-manager.updateProclib",
+                "title": "JCL: Update PROCLIB"
+            },
+            {
+                "command": "jcl-library-manager.importMappings",
                 "title": "JCL: Bulk Import Mappings"
             }
         ],
         "menus": {
             "editor/context": [
                 {
-                    "command": "jcl-joblib-manager.updateJoblib",
-                    "group": "modification"
+                    "command": "jcl-library-manager.updateJoblib",
+                    "group": "modification@1"
+                },
+                {
+                    "command": "jcl-library-manager.updateProclib",
+                    "group": "modification@2"
                 }
             ]
         },
         "configuration": {
-            "title": "JCL JOBLIB Manager",
+            "title": "JCL Library Manager",
             "properties": {
-                "jclJoblibManager.supportedExtensions": {
+                "jclLibraryManager.supportedExtensions": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
                     "default": [
                         ".jcl",
-                        ".txt",
                         ".txt"
                     ],
-                    "description": "List of file extensions where this command should be allowed to run. Use empty array to allow all files."
+                    "description": "List of file extensions where these commands should be allowed to run."
                 },
-                "jclJoblibManager.mappings": {
+                "jclLibraryManager.joblibMappings": {
                     "type": "object",
                     "default": {
                         "DEV": "SYS1.DEV.LINKLIB",
-                        "PROD": "SYS1.PROD.LINKLIB",
-                        "TEST": "SYS1.TEST.LINKLIB"
+                        "PROD": "SYS1.PROD.LINKLIB"
                     },
-                    "description": "Custom Joblib Shorthands. Key is the shorthand (e.g., 'DEV'), Value is the library name (e.g., 'SYS1.DEV.LINKLIB').",
+                    "description": "JOBLIB Shorthands. Key: shorthand, Value: library name.",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "jclLibraryManager.proclibMappings": {
+                    "type": "object",
+                    "default": {
+                        "DEV": "SYS1.DEV.PROCLIB",
+                        "PROD": "SYS1.PROD.PROCLIB"
+                    },
+                    "description": "PROCLIB Shorthands. Key: shorthand, Value: library name.",
                     "additionalProperties": {
                         "type": "string"
                     }
