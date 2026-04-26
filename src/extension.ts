@@ -11,12 +11,169 @@ export function activate(context: vscode.ExtensionContext) {
         await updateLibrary('PROC', args);
     });
 
-    // 3. Bulk Import Command
+    // 3. Job Card Update Command
+    let updateJobCard = vscode.commands.registerCommand('jcl-library-manager.updateJobCard', async () => {
+        await updateJobCardLogic();
+    });
+
+    // 4. Bulk Import Command
     let importMappings = vscode.commands.registerCommand('jcl-library-manager.importMappings', async () => {
         await bulkImport();
     });
 
-    context.subscriptions.push(updateJoblib, updateProclib, importMappings);
+    context.subscriptions.push(updateJoblib, updateProclib, updateJobCard, importMappings);
+}
+
+async function updateJobCardLogic() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showErrorMessage('No active editor found.');
+        return;
+    }
+
+    const document = editor.document;
+    const config = vscode.workspace.getConfiguration('jclLibraryManager');
+    let skeleton = config.get<string>('jobCardSkeleton') || '';
+
+    if (!skeleton) {
+        vscode.window.showErrorMessage('No Job Card skeleton defined in settings.');
+        return;
+    }
+
+    // Default values from settings
+    let overrides: Record<string, string> = {
+        'CLASS': config.get<string>('defaultClass') || 'A',
+        'MSGCLASS': config.get<string>('defaultMsgClass') || 'X',
+        'NOTIFY': '',
+        'TYPRUN': '',
+        'REGION': ''
+    };
+
+    // Prompt for overrides
+    const input = await vscode.window.showInputBox({
+        prompt: "Optional overrides: C=class MC=msgclass N=Y/N T=typrun R=region",
+        placeHolder: "e.g. C=B MC=Y N=Y R=4M"
+    });
+
+    if (input) {
+        // Use a regex to split while allowing empty strings between multiple spaces if we want, 
+        // but standard split(/\s+/) collapses them. Let's use a placeholder like '.' or '-' to skip.
+        const parts = input.trim().split(/\s+/);
+        parts.forEach((part, index) => {
+            if (part.includes('=')) {
+                // Keyed format: C=A, MC=X, etc.
+                const [key, val] = part.toUpperCase().split('=');
+                if (key === 'C') overrides['CLASS'] = val;
+                else if (key === 'MC') overrides['MSGCLASS'] = val;
+                else if (key === 'N') overrides['NOTIFY'] = val === 'Y' ? '&SYSUID' : '';
+                else if (key === 'T') overrides['TYPRUN'] = val;
+                else if (key === 'R') overrides['REGION'] = val;
+            } else {
+                // Positional format: CLASS MSGCLASS REGION NOTIFY TYPRUN
+                // Allow skipping using a dot '.' or underscore '_'
+                if (part === '.' || part === '_') return;
+                
+                const val = part.toUpperCase();
+                if (index === 0) overrides['CLASS'] = val;
+                else if (index === 1) overrides['MSGCLASS'] = val;
+                else if (index === 2) overrides['REGION'] = val;
+                else if (index === 3) overrides['NOTIFY'] = val === 'Y' ? '&SYSUID' : '';
+                else if (index === 4) overrides['TYPRUN'] = val;
+            }
+        });
+    }
+
+    const text = document.getText();
+    const lines = text.split(/\r?\n/);
+    
+    let jobCardStart = -1;
+    let jobCardEnd = -1;
+    let currentJobName = 'TEMPJOB';
+
+    // 1. Find the Job Card range
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('//') && line.includes(' JOB ')) {
+            jobCardStart = i;
+            jobCardEnd = i;
+            
+            // Extract job name
+            const match = line.match(/^\/\/([A-Z0-9#@$]{1,8})\s+JOB/);
+            if (match) {
+                currentJobName = match[1];
+            }
+
+            // Find continuation lines
+            let j = i;
+            while (j < lines.length) {
+                const currentLine = lines[j];
+                const content = currentLine.split('//*')[0].trim();
+                if (content.endsWith(',')) {
+                    j++;
+                    if (j < lines.length && lines[j].startsWith('//') && !lines[j].startsWith('//*')) {
+                        jobCardEnd = j;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    if (jobCardStart === -1) {
+        vscode.window.showErrorMessage('Could not find a JOB card.');
+        return;
+    }
+
+    // 2. Prepare the new Job Card
+    const randomChars = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let result = '';
+        for (let i = 0; i < 2; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+    };
+
+    // Apply substitutions
+    let finalJobCard = skeleton
+        .replace(/\{jobName\}/g, currentJobName)
+        .replace(/\{@@\}/g, () => randomChars())
+        .replace(/\{class\}/g, overrides['CLASS'])
+        .replace(/\{msgclass\}/g, overrides['MSGCLASS']);
+
+    // Handle optional fields: if empty, we might want to remove the comma/parameter entirely
+    // or just let the skeleton handle it. For now, let's be smart about NOTIFY, TYPRUN, REGION.
+    
+    if (overrides['NOTIFY']) {
+        finalJobCard = finalJobCard.replace(/\{notify\}/g, `NOTIFY=${overrides['NOTIFY']}`);
+    } else {
+        finalJobCard = finalJobCard.replace(/,?\s*\{notify\}/g, '');
+    }
+
+    if (overrides['TYPRUN']) {
+        finalJobCard = finalJobCard.replace(/\{typrun\}/g, `TYPRUN=${overrides['TYPRUN']}`);
+    } else {
+        finalJobCard = finalJobCard.replace(/,?\s*\{typrun\}/g, '');
+    }
+
+    if (overrides['REGION']) {
+        finalJobCard = finalJobCard.replace(/\{region\}/g, `REGION=${overrides['REGION']}`);
+    } else {
+        finalJobCard = finalJobCard.replace(/,?\s*\{region\}/g, '');
+    }
+
+    // 3. Replace
+    await editor.edit(editBuilder => {
+        const range = new vscode.Range(
+            new vscode.Position(jobCardStart, 0),
+            new vscode.Position(jobCardEnd + 1, 0)
+        );
+        editBuilder.replace(range, finalJobCard + '\n');
+    });
 }
 
 async function updateLibrary(type: 'JOB' | 'PROC', args: any[]) {

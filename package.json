@@ -3,7 +3,7 @@
     "displayName": "JCL Library Manager",
     "description": "Quickly update JCL JOBLIB and PROCLIB statements using shorthand names.",
     "version": "1.2.0",
-    "publisher": "your-name-or-company",
+    "publisher": "usmc-tso",
     "engines": {
         "vscode": "^1.75.0"
     },
@@ -23,12 +23,20 @@
                 "title": "JCL: Update PROCLIB"
             },
             {
+                "command": "jcl-library-manager.updateJobCard",
+                "title": "JCL: Update Job Card"
+            },
+            {
                 "command": "jcl-library-manager.importMappings",
                 "title": "JCL: Bulk Import Mappings"
             }
         ],
         "menus": {
             "editor/context": [
+                {
+                    "command": "jcl-library-manager.updateJobCard",
+                    "group": "modification@0"
+                },
                 {
                     "command": "jcl-library-manager.updateJoblib",
                     "group": "modification@1"
@@ -42,6 +50,22 @@
         "configuration": {
             "title": "JCL Library Manager",
             "properties": {
+                "jclLibraryManager.jobCardSkeleton": {
+                    "type": "string",
+                    "default": "//{jobName} JOB (ACCT),'INFO',CLASS={class},MSGCLASS={msgclass},{notify}{typrun}{region}",
+                    "description": "Multi-line Job Card skeleton. Use placeholders: {jobName}, {@@}, {class}, {msgclass}, {notify}, {typrun}, {region}.",
+                    "editPresentation": "multilineText"
+                },
+                "jclLibraryManager.defaultClass": {
+                    "type": "string",
+                    "default": "A",
+                    "description": "Default JOB CLASS if not overridden in command."
+                },
+                "jclLibraryManager.defaultMsgClass": {
+                    "type": "string",
+                    "default": "X",
+                    "description": "Default MSGCLASS if not overridden in command."
+                },
                 "jclLibraryManager.supportedExtensions": {
                     "type": "array",
                     "items": {

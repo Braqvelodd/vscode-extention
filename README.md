@@ -1,14 +1,13 @@
 # JCL Library Manager
 
-Quickly update JCL JOBLIB and PROCLIB statements using shorthand names.
+Quickly update JCL JOBLIB, PROCLIB, and JOB cards using shorthand names and skeletons.
 
 ## Features
-- **Smart Update:** Updates active JOBLIB, PROCLIB, or JCLLIB ORDER statements while preserving your comments.
-- **JOBLIB & PROCLIB Support:** Separate mappings for job and procedure libraries.
-- **JCLLIB ORDER Handling:** Detects and maintains multi-line `JCLLIB ORDER=(...)` blocks.
-- **Bulk Import:** Import large lists of mappings using a simple format: `SHORTHAND,TYPE,VALUE`.
-- **Auto-Formatting:** Automatically adds `DSN=` and `DISP=SHR`.
-- **Customizable Scope:** Configure which file extensions the extension should run on.
+- **Smart Library Update:** Updates active JOBLIB, PROCLIB, or JCLLIB ORDER statements while preserving comments.
+- **Header Cleanup:** Automatically removes redundant or duplicate library blocks between the JOB card and the first EXEC.
+- **Custom JOB Card:** Replace your Job Card with a custom multi-line skeleton.
+- **Dynamic Variables:** Support for `{jobName}` preservation and `{@@}` random character generation.
+- **Bulk Import:** Import mapping lists from CSV/Text files.
 
 ## How to Use
 
@@ -17,20 +16,31 @@ Quickly update JCL JOBLIB and PROCLIB statements using shorthand names.
 2. **Right-click** and select **JCL: Update JOBLIB** or **JCL: Update PROCLIB**.
 3. Enter your shorthand names (e.g., `dev prod`).
 
+### Updating Job Cards
+1. **Right-click** and select **JCL: Update Job Card**.
+2. An input box will appear for optional overrides. You can use two styles:
+
+   **Positional Style:** (Order: CLASS, MSGCLASS, REGION, NOTIFY, TYPRUN)
+   - `. . 4M` (Skips Class/MsgClass, sets Region to 4M)
+   - `C X 0M Y` (Sets Class=C, MsgClass=X, Region=0M, Notify=YES)
+
+   **Keyed Style:**
+   - `C=A MC=X R=4M N=Y T=HOLD`
+
+   *Note: Use `.` or `_` to skip a positional argument. For Notify, use `Y` to enable `NOTIFY=&SYSUID`.*
+
 ### Bulk Importing Mappings
-Prepare a text file with your mappings:
+Prepare a text file with: `SHORTHAND,TYPE,VALUE`
 ```text
 DEV,JOB,SYS1.DEV.LINKLIB
-PROD,JOB,SYS1.PROD.LINKLIB
-DEV,PROC,SYS1.DEV.PROCLIB
 PROD,PROC,SYS1.PROD.PROCLIB
 ```
 1. Run **JCL: Bulk Import Mappings** from the Command Palette.
-2. Select your file and choose **Merge** or **Overwrite**.
 
 ## Configuration
 Go to `Settings` -> `Extensions` -> `JCL Library Manager`:
 
-- `joblibMappings`: Shorthands for JOBLIB.
-- `proclibMappings`: Shorthands for PROCLIB.
-- `supportedExtensions`: File extensions allowed (Default: `.jcl`, `.txt`).
+- `jobCardSkeleton`: The multi-line template for your Job Card.
+  - *Placeholders:* `{jobName}`, `{@@}`, `{class}`, `{msgclass}`, `{notify}`, `{typrun}`, `{region}`.
+- `defaultClass` / `defaultMsgClass`: Baseline values for the Job Card.
+- `joblibMappings` / `proclibMappings`: Your shorthand dictionaries.
