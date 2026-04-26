@@ -2,8 +2,9 @@
     "name": "jcl-library-manager",
     "displayName": "JCL Library Manager",
     "description": "Quickly update JCL JOBLIB and PROCLIB statements using shorthand names.",
-    "version": "1.2.0",
-    "publisher": "usmc-tso",
+    "version": "1.2.1",
+    "publisher": "USMC-TSO",
+    "icon": "resources/icon.png",
     "engines": {
         "vscode": "^1.75.0"
     },
