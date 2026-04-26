@@ -124,8 +124,9 @@ async function updateJobCardLogic() {
     }
 
     if (jobCardStart === -1) {
-        vscode.window.showErrorMessage('Could not find a JOB card.');
-        return;
+        jobCardStart = 0;
+        // vscode.window.showErrorMessage('Could not find a JOB card.');
+        // return;
     }
 
     // 2. Prepare the new Job Card
