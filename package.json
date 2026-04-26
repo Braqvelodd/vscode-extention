@@ -1,0 +1,74 @@
+{
+    "name": "jcl-joblib-manager",
+    "displayName": "JCL JOBLIB Manager",
+    "description": "Quickly update JCL JOBLIB statements using shorthand names.",
+    "version": "1.1.0",
+    "publisher": "usmc-tso",
+    "engines": {
+        "vscode": "^1.75.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "jcl-joblib-manager.updateJoblib",
+                "title": "JCL: Update JOBLIB"
+            },
+            {
+                "command": "jcl-joblib-manager.importMappings",
+                "title": "JCL: Bulk Import Mappings"
+            }
+        ],
+        "menus": {
+            "editor/context": [
+                {
+                    "command": "jcl-joblib-manager.updateJoblib",
+                    "group": "modification"
+                }
+            ]
+        },
+        "configuration": {
+            "title": "JCL JOBLIB Manager",
+            "properties": {
+                "jclJoblibManager.supportedExtensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        ".jcl",
+                        ".txt",
+                        ".txt"
+                    ],
+                    "description": "List of file extensions where this command should be allowed to run. Use empty array to allow all files."
+                },
+                "jclJoblibManager.mappings": {
+                    "type": "object",
+                    "default": {
+                        "DEV": "SYS1.DEV.LINKLIB",
+                        "PROD": "SYS1.PROD.LINKLIB",
+                        "TEST": "SYS1.TEST.LINKLIB"
+                    },
+                    "description": "Custom Joblib Shorthands. Key is the shorthand (e.g., 'DEV'), Value is the library name (e.g., 'SYS1.DEV.LINKLIB').",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "devDependencies": {
+        "@types/node": "^16.11.7",
+        "@types/vscode": "^1.75.0",
+        "typescript": "^4.9.5"
+    }
+}
