@@ -2,3 +2,4 @@ text.jcl
 .vscode/**
 .gitignore
 **/*.map
+src/**

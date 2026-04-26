@@ -5,3 +5,4 @@ out/
 .history/
 *.log
 .DS_Store
+.vscodeignore
