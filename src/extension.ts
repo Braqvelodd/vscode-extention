@@ -33,6 +33,15 @@ async function updateJobCardLogic() {
 
     const document = editor.document;
     const config = vscode.workspace.getConfiguration('jclLibraryManager');
+    
+    // Check for supported extensions
+    const supportedExtensions: string[] = config.get('supportedExtensions') || [];
+    const fileName = document.fileName.toLowerCase();
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+    
+    if (supportedExtensions.length > 0 && !supportedExtensions.map(ext => ext.toLowerCase()).includes(fileExtension)) {
+        return; 
+    }
     let skeleton = config.get<string>('jobCardSkeleton') || '';
 
     if (!skeleton) {
