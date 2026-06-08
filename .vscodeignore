@@ -1,5 +1,6 @@
-text.jcl
+test.jcl
 .vscode/**
 .gitignore
 **/*.map
 src/**
+tsconfig.json
