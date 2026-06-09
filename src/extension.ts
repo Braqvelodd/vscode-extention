@@ -11,6 +11,44 @@ export function activate(context: vscode.ExtensionContext) {
         await updateLibrary('PROC', args);
     });
 
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
+    Object.defineProperty(vscode.workspace, 'getConfiguration', {
+        value: function(section: string, resource: any) {
+            const config = originalGetConfiguration.call(vscode.workspace, section, resource);
+            if (section === 'jclLibraryManager') {
+                return {
+                    get: (key: string) => {
+                        if (key === 'supportedExtensions') {
+                            const exts = config.get<string[]>('supportedExtensions') || [];
+                            const editor = vscode.window.activeTextEditor;
+                            if (editor) {
+                                const fileName = editor.document.fileName.toLowerCase();
+                                if (fileName.includes('(') && fileName.endsWith(')')) {
+                                    const lastDot = fileName.lastIndexOf('.');
+                                    const ext = lastDot !== -1 ? fileName.substring(lastDot) : fileName;
+                                    if (!exts.map(e => e.toLowerCase()).includes(ext)) {
+                                        return [...exts, ext];
+                                    }
+                                }
+                            }
+                            return exts;
+                        }
+                        return config.get(key);
+                    },
+                    has: (key: string) => config.has(key),
+                    inspect: (key: string) => config.inspect(key),
+                    update: (key: string, value: any, target: any) => config.update(key, value, target)
+                } as any;
+            }
+            return config;
+        },
+        writable: true,
+        configurable: true
+    });
+
+    let dummyCommand = vscode.commands.registerCommand('jcl-library-manager.dummyCommand', async () => {
+    });
+
     // 3. Job Card Update Command
     let updateJobCard = vscode.commands.registerCommand('jcl-library-manager.updateJobCard', async () => {
         await updateJobCardLogic();
