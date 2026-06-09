@@ -4,3 +4,4 @@ test.jcl
 **/*.map
 src/**
 tsconfig.json
+build.bat
