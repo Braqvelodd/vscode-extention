@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
         await bulkImport();
     });
 
-    context.subscriptions.push(updateJoblib, updateProclib, updateJobCard, importMappings);
+    context.subscriptions.push(updateJoblib, updateProclib, dummyCommand, updateJobCard, importMappings);
 }
 
 async function updateJobCardLogic() {
